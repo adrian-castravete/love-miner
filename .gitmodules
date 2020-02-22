@@ -1,0 +1,3 @@
+[submodule "breadboard"]
+	path = breadboard
+	url = git@github.com:adrian-castravete/breadboard
