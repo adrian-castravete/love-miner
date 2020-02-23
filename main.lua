@@ -15,7 +15,7 @@ function BB.frame(dt)
   BB.clearScreen()
 
   local dx, dy = 0, 0
-  local s = 64 * dt
+  local s = 256 * dt
   if btn('l') then dx = dx - s end
   if btn('u') then dy = dy - s end
   if btn('r') then dx = dx + s end
