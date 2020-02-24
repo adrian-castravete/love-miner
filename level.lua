@@ -86,7 +86,8 @@ function Level:generateMap(width, height)
         i = i,
         j = j,
         k = v,
-        ll = 0,
+        ll = 7,
+        u = true,
       }
     end
     coroutine.yield('generation', j / height)
@@ -163,21 +164,14 @@ function Level:generateMap(width, height)
   end
   coroutine.yield('lighting', 1)
 
-  log.debug("Drawing tiles")
-  for j=1, height do
-    for i=1, width do
-      local x, y = (i-1) * 2, (j-1) * 2
-      local v = m[j][i]
-      if v.k then
-        local c = _kindMap[v.k]
-        BB.tile(self._img, c[1]*2, c[2]*2, x, y, 2, 2, v.ll)
-      else
-        BB.tileClear(x, y, 2, 2, 0, 0, 1, {0, 0.25, 1})
-      end
-    end
-    coroutine.yield('drawing', j / height)
-  end
-  coroutine.yield('drawing', 1)
+  --log.debug("Drawing tiles")
+  --for j=1, height do
+  --  for i=1, width do
+  --    self:_redrawTile(i, j)
+  --  end
+  --  coroutine.yield('drawing', j / height)
+  --end
+  --coroutine.yield('drawing', 1)
 
   self.cameraX = width * 16
   self.cameraY = 0
@@ -218,7 +212,40 @@ function Level:update(dt)
     cy = math.min(h * 16 - 119, math.max(0, cy))
     self.cameraX, self.cameraY = cx, cy
 
+    self:_redrawUncleanTiles()
     BB.draw(0, 0, w*2, h*2, -cx, -cy)
+  end
+end
+
+function Level:_redrawUncleanTiles()
+  local vi = BB.viewport()
+  local zr = 16 * vi.zoom
+  local sxb = math.floor(self.cameraX / 16 - vi.offsetX / zr)
+  local syb = math.floor(self.cameraY / 16 - vi.offsetY / zr)
+  local sxe = sxb + math.floor(vi.width / zr) + 1
+  local sye = syb + math.floor(vi.height / zr) + 1
+
+  for j=syb, sye do
+    for i=sxb, sxe do
+      if i > 0 and j > 0 and i <= self._levelWidth and j <= self._levelHeight then
+        local c = self._map[j][i]
+        if c.u then
+          self:_redrawTile(i, j)
+          c.u = false
+        end
+      end
+    end
+  end
+end
+
+function Level:_redrawTile(i, j)
+  local x, y = (i-1) * 2, (j-1) * 2
+  local v = self._map[j][i]
+  if v.k then
+    local c = _kindMap[v.k]
+    BB.tile(self._img, c[1]*2, c[2]*2, x, y, 2, 2, v.ll/7)
+  else
+    BB.tileClear(x, y, 2, 2, 0, 0, 1, {0, 0.25, 1})
   end
 end
 
