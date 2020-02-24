@@ -7,8 +7,15 @@ BB.screenSize(120)
 local btn = BB.button
 
 local Level = require("level")
+local Player = require("player")
 
 local level = Level()
+local player = Player(57*16, 5*16)
+level:on("create", function (w, h)
+  player.x = (w-7)*16
+  player.y = 5*16
+  log.info("Ready player one")
+end)
 
 log.info("Starting animation; reached `BB.frame`")
 function BB.frame(dt)
@@ -24,4 +31,7 @@ function BB.frame(dt)
   level.cameraY = level.cameraY + dy
 
   level:update(dt)
+  if level:ready() then
+    player:update(dt)
+  end
 end

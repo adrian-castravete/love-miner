@@ -1,6 +1,8 @@
 local BB = require("breadboard")
 local log = require("log")
 
+local Entity = require("entity")
+
 local rnd = love.math.random
 
 local _kindMap = {
@@ -18,7 +20,7 @@ local _kindMap = {
   grass = {0, 3},
 }
 
-local Level = BB.class()
+local Level = BB.class(Entity)
 
 function Level:init(width, height)
   local w = width or 64
@@ -183,8 +185,14 @@ function Level:generateMap(width, height)
   log.info("Level generation completed.")
 
   self._state = 'playing'
+  self._map = m
+  self:fire("create", width, height)
 
-  return 'done', m
+  return 'done'
+end
+
+function Level:ready()
+  return self._state == 'playing'
 end
 
 function Level:update(dt)
@@ -196,11 +204,10 @@ function Level:update(dt)
   elseif self._state == 'creating' then
     local err, st, prog = coroutine.resume(self._co, self)
     if not err then
-      self:setError(st)
+      log.error("WTF? "..tostring(st), 2)
+      love.event.quit()
     else
-      if st == 'done' then
-        self._map = prog
-      else
+      if st ~= 'done' then
         BB.printXY(0, 0, "Creating level ...")
         BB.printXY(0, 12, st..": "..tostring(math.floor(prog*100)).."%")
       end
