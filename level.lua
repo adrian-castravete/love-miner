@@ -84,6 +84,7 @@ function Level:generateMap(width, height)
         i = i,
         j = j,
         k = v,
+        ll = 0,
       }
     end
     coroutine.yield('generation', j / height)
@@ -99,6 +100,7 @@ function Level:generateMap(width, height)
   for i=2, width-8 do
     for j=1, y-1 do
       m[j][i].k = nil
+      m[j][i].ll = 7
     end
     m[y][i].k = 'grass'
     if rnd() < 0.5 then
@@ -146,14 +148,27 @@ function Level:generateMap(width, height)
   end
   coroutine.yield('bedrock', 1)
 
+  log.debug("Setting initial light levels for top")
+  for i=1, width-8 do
+    for j=1, 6 do
+      if j == 1 or m[j-1][i].k == nil or
+         i > 1 and m[j][i-1].k == nil or
+         i < width and m[j][i+1].k == nil then
+        m[j][i].ll = 7
+      end
+    end
+    coroutine.yield('lighting', i / (width-8))
+  end
+  coroutine.yield('lighting', 1)
+
   log.debug("Drawing tiles")
   for j=1, height do
     for i=1, width do
       local x, y = (i-1) * 2, (j-1) * 2
       local v = m[j][i]
       if v.k then
-        v = _kindMap[v.k]
-        BB.tile(self._img, v[1]*2, v[2]*2, x, y, 2, 2)
+        local c = _kindMap[v.k]
+        BB.tile(self._img, c[1]*2, c[2]*2, x, y, 2, 2, v.ll)
       else
         BB.tileClear(x, y, 2, 2, 0, 0, 1, {0, 0.25, 1})
       end
@@ -186,7 +201,8 @@ function Level:update(dt)
       if st == 'done' then
         self._map = prog
       else
-        BB.printXY(0, 0, st..": "..tostring(math.floor(prog*100)).."%")
+        BB.printXY(0, 0, "Creating level ...")
+        BB.printXY(0, 12, st..": "..tostring(math.floor(prog*100)).."%")
       end
     end
   elseif self._state == 'playing' then
