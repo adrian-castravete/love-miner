@@ -26,10 +26,12 @@ function Level:init(width, height)
   local w = width or 64
   local h = height or 64
 
-  self._levelWidth = w
-  self._levelHeight = h
   self.cameraX = w * 16
   self.cameraY = 0
+
+  self._maxLightLevel = 15
+  self._levelWidth = w
+  self._levelHeight = h
   self._img = BB.makeTileset("blocks.png")
   self._state = 'initial'
   self._map = nil
@@ -39,6 +41,7 @@ end
 function Level:generateMap(width, height)
   local m = {}
   local brd = 5
+  local mll = self._maxLightLevel
 
   self._state = 'creating'
   log.info("Starting level generation for a ("..width..", "..height..")")
@@ -86,15 +89,13 @@ function Level:generateMap(width, height)
         i = i,
         j = j,
         k = v,
-        ll = 7,
+        ll = 0,
         u = true,
       }
     end
     coroutine.yield('generation', j / height)
   end
-  local v = rnd(255)
-  while v == self._lastV do v = rnd(255) end
-  self._lastV = v
+  local v = self:_uniqueV()
   m[6][width-8].k = 'dirt'
   coroutine.yield('generation', 1)
 
@@ -103,7 +104,7 @@ function Level:generateMap(width, height)
   for i=2, width-8 do
     for j=1, y-1 do
       m[j][i].k = nil
-      m[j][i].ll = 7
+      m[j][i].ll = mll
     end
     m[y][i].k = 'grass'
     if rnd() < 0.5 then
@@ -152,15 +153,15 @@ function Level:generateMap(width, height)
   coroutine.yield('bedrock', 1)
 
   log.debug("Setting initial light levels for top")
-  for i=1, width-8 do
-    for j=1, 6 do
+  for i=1, width do
+    for j=1, 7 do
       if j == 1 or m[j-1][i].k == nil or
          i > 1 and m[j][i-1].k == nil or
          i < width and m[j][i+1].k == nil then
-        m[j][i].ll = 7
+        m[j][i].ll = mll
       end
     end
-    coroutine.yield('lighting', i / (width-8))
+    coroutine.yield('lighting', i / width)
   end
   coroutine.yield('lighting', 1)
 
@@ -198,7 +199,7 @@ function Level:update(dt)
   elseif self._state == 'creating' then
     local err, st, prog = coroutine.resume(self._co, self)
     if not err then
-      log.error("WTF? "..tostring(st), 2)
+      log.error("WTF? "..tostring(st))
       love.event.quit()
     else
       if st ~= 'done' then
@@ -207,14 +208,56 @@ function Level:update(dt)
       end
     end
   elseif self._state == 'playing' then
-    local cx, cy = self.cameraX, self.cameraY
-    cx = math.min(w * 16 - 119, math.max(0, cx))
-    cy = math.min(h * 16 - 119, math.max(0, cy))
-    self.cameraX, self.cameraY = cx, cy
-
+    self:_cameraBounds()
     self:_redrawUncleanTiles()
-    BB.draw(0, 0, w*2, h*2, -cx, -cy)
+    BB.draw(0, 0, w*2, h*2, -self.cameraX, -self.cameraY)
   end
+end
+
+function Level:warpCamera(newX, newY)
+  self.cameraX, self.cameraY = newX, newY
+  self:_cameraBounds()
+end
+
+function Level:dig(cx, cy, v)
+  if not self:ready() then
+    log.warn("Level not ready. Ignoring dig...")
+    return
+  end
+  local m = self._map
+  local c = m[cy][cx]
+  if c.k then
+    c.k = 'air'
+  end
+  if cy == 1 then
+    m[1][cx].k = nil
+  end
+  local j = 2
+  while m[j][cx].k == 'air' or m[j][cx].k == nil do
+    if m[j][cx].k == 'air' and m[j-1][cx].k == nil then
+      m[j][cx].k = nil
+      self:_refresh(cx, j)
+    end
+    j = j + 1
+  end
+  self:_refresh(cx, cy)
+end
+
+function Level:placeTorch(cx, cy)
+  if not self:ready() then
+    log.warn("Level not ready. Ignoring dig...")
+    return
+  end
+  local c = self._map[cy][cx]
+  c.ll = self._maxLightLevel
+  self:_refresh(cx, cy)
+end
+
+function Level:_cameraBounds()
+  local cx, cy = self.cameraX, self.cameraY
+  cx = math.min(self._levelWidth * 16 - 119, math.max(0, cx))
+  cy = math.min(self._levelHeight * 16 - 119, math.max(0, cy))
+  self.cameraX, self.cameraY = cx, cy
 end
 
 function Level:_redrawUncleanTiles()
@@ -222,8 +265,8 @@ function Level:_redrawUncleanTiles()
   local zr = 16 * vi.zoom
   local sxb = math.floor(self.cameraX / 16 - vi.offsetX / zr)
   local syb = math.floor(self.cameraY / 16 - vi.offsetY / zr)
-  local sxe = sxb + math.floor(vi.width / zr) + 1
-  local sye = syb + math.floor(vi.height / zr) + 1
+  local sxe = sxb + math.floor(vi.width / zr) + 2
+  local sye = syb + math.floor(vi.height / zr) + 2
 
   for j=syb, sye do
     for i=sxb, sxe do
@@ -238,15 +281,78 @@ function Level:_redrawUncleanTiles()
   end
 end
 
+function Level:_refresh(i, j)
+  if not (i > 0 and j > 0 and i <= self._levelWidth and j <= self._levelHeight) then
+    return
+  end
+
+  local m = self._map
+  local accum = {{i, j}}
+  local top = 1
+  local v = self:_uniqueV()
+  while top <= #accum do
+    local x, y = unpack(accum[top])
+    top = top + 1
+    self:_refreshLightLevel(x, y)
+    local check = function (cx, cy)
+      if m[cy][cx].k == 'air' and m[cy][cx]._v ~= v and math.abs(cx-i) + math.abs(cy-j) < 8 then
+        m[cy][cx]._v = v
+        accum[#accum+1] = {cx, cy}
+      end
+      self:_refreshLightLevel(cx, cy)
+    end
+    if x > 1 then check(x-1, y) end
+    if y > 1 then check(x, y-1) end
+    if x < self._levelWidth then check(x+1, y) end
+    if y < self._levelHeight then check(x, y+1) end
+  end
+end
+
+function Level:_refreshLightLevel(i, j)
+  local m = self._map
+  local c = m[j][i]
+  local lightLevel = c.ll
+
+  local check = function(v)
+    if not v.k then
+      lightLevel = self._maxLightLevel
+    end
+    if v.k == 'air' and lightLevel < v.ll - 1 then
+      lightLevel = v.ll - 1
+    end
+  end
+  if i > 1 then check(m[j][i-1]) end
+  if j > 1 then check(m[j-1][i]) end
+  if i < self._levelWidth then check(m[j][i+1]) end
+  if j < self._levelHeight then check(m[j+1][i]) end
+  c.ll = lightLevel
+  c.u = true
+end
+
 function Level:_redrawTile(i, j)
   local x, y = (i-1) * 2, (j-1) * 2
   local v = self._map[j][i]
+
+  if v.ll == 0 then return end
+  local l = v.ll / self._maxLightLevel
+  BB.tileClear(x, y, 2, 2)
   if v.k then
-    local c = _kindMap[v.k]
-    BB.tile(self._img, c[1]*2, c[2]*2, x, y, 2, 2, v.ll/7)
+    if v.k == 'air' then
+      BB.tile(self._img, 0, 0, x, y, 2, 2, l, {0.4, 0.3, 0})
+    else
+      local c = _kindMap[v.k]
+      BB.tile(self._img, c[1]*2, c[2]*2, x, y, 2, 2, l)
+    end
   else
-    BB.tileClear(x, y, 2, 2, 0, 0, 1, {0, 0.25, 1})
+    BB.tileClear(x, y, 2, 2, 1, {0, 0.25, 1})
   end
+end
+
+function Level:_uniqueV()
+  local v = rnd(255)
+  while v == self._lastV do v = rnd(255) end
+  self._lastV = v
+  return v
 end
 
 return Level
