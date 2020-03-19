@@ -52,46 +52,60 @@ function Level:generateMap(width, height)
   for j=1, height do
     m[j] = {}
     for i=1, width do
-      local v = nil
+      m[j][i] = {
+        i = i,
+        j = j,
+        k = nil,
+        ll = 0,
+        d = 1,
+        u = true,
+      }
+      local v, d = nil, 1
       if j > 6 or i <= width - 8 then
         if i == 1 or i == width or j == height then
           v = 'bedRock'
+          d = 1048576000
         elseif i > width - brd and 1 - (width - i) / brd > rnd() or
                i <= brd and (i-1) / brd < rnd() or
                j > height - brd and 1 - (height - j) / brd > rnd() then
           v = 'bedRock'
+          d = 1048576000
         elseif rnd() < 0.3 * j / height then
           v = 'rock'
+          d = 20
         else
           local r = rnd()
           if r < 0.01 then
             v = 'dirt4'
+            d = 7
           elseif r < 0.03 then
             v = 'dirt3'
+            d = 6
           elseif r < 0.1 then
             v = 'dirt2'
+            d = 5
           else
             v = rnd() < 0.3 and 'dirt1' or 'dirt'
+            d = 3 + (v == 'dirt1' and 1 or 0)
           end
           r = rnd()
           if r < 0.003 then
             v = 'gold4'
+            d = 7
           elseif r < 0.01 then
             v = 'gold3'
+            d = 6
           elseif r < 0.03 then
             v = 'gold2'
+            d = 5
           elseif r < 0.09 then
             v = 'gold1'
+            d = 4
           end
         end
       end
-      m[j][i] = {
-        i = i,
-        j = j,
-        k = v,
-        ll = 0,
-        u = true,
-      }
+      m[j][i].k = v
+      m[j][i].d = d
     end
     coroutine.yield('generation', j / height)
   end

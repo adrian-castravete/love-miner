@@ -35,6 +35,9 @@ function Player:warpRelative(dx, dy)
   self:warp(self.cx+dx, self.cy+dy)
 end
 
+function Player:reactRelative(dx, dy)
+end
+
 function Player:placeTorch()
   self.level:placeTorch(self.cx, self.cy)
 end
